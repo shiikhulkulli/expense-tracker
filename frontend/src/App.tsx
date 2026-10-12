@@ -77,7 +77,13 @@ function App() {
   const [amount, setAmount] = useState('')
   const [category, setCategory] = useState('')
   const [description, setDescription] = useState('')
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))  
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all')
+  const [filterCategory, setFilterCategory] = useState('all')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+
 
   const filteredCategories = categories.filter(
     (item) => item.type === type
@@ -321,6 +327,33 @@ function App() {
     .reduce((total, item) => total + item.amount, 0)
 
   const balance = totalIncome - totalExpenses
+  
+const filteredTransactions = transactions.filter((item) => {
+  const matchesSearch =
+    item.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.description.toLowerCase().includes(searchTerm.toLowerCase())
+
+  const matchesType =
+    filterType === 'all' || item.type === filterType
+
+  const matchesCategory =
+    filterCategory === 'all' ||
+    String(item.categoryId) === filterCategory
+
+  const matchesStartDate =
+    !startDate || item.date >= startDate
+
+  const matchesEndDate =
+    !endDate || item.date <= endDate
+
+  return (
+    matchesSearch &&
+    matchesType &&
+    matchesCategory &&
+    matchesStartDate &&
+    matchesEndDate
+  )
+})
 
   if (isCheckingSession) {
     return (
@@ -522,58 +555,137 @@ function App() {
           </section>
         )}
 
-        <section className="transactions-section">
-          <h2>Recent Transactions</h2>
 
-          {transactions.length === 0 ? (
-            <p className="empty-state">
-              No transactions yet. Add your first transaction.
+<section className="transactions-section">
+  <h2>Recent Transactions</h2>
+
+  <div className="transaction-filters">
+    <label>
+      Search
+      <input
+        type="search"
+        placeholder="Search description or category..."
+        value={searchTerm}
+        onChange={(event) => setSearchTerm(event.target.value)}
+      />
+    </label>
+
+    <label>
+      Transaction type
+      <select
+        value={filterType}
+        onChange={(event) =>
+          setFilterType(event.target.value as 'all' | 'income' | 'expense')
+        }
+      >
+        <option value="all">All types</option>
+        <option value="income">Income</option>
+        <option value="expense">Expenses</option>
+      </select>
+    </label>
+
+    <label>
+      Category
+      <select
+        value={filterCategory}
+        onChange={(event) => setFilterCategory(event.target.value)}
+      >
+        <option value="all">All categories</option>
+        {categories.map((item) => (
+          <option key={item.id} value={String(item.id)}>
+            {item.name}
+          </option>
+        ))}
+      </select>
+    </label>
+
+    <label>
+      From date
+      <input
+        type="date"
+        value={startDate}
+        max={endDate || undefined}
+        onChange={(event) => setStartDate(event.target.value)}
+      />
+    </label>
+
+    <label>
+      To date
+      <input
+        type="date"
+        value={endDate}
+        min={startDate || undefined}
+        onChange={(event) => setEndDate(event.target.value)}
+      />
+    </label>
+
+    <button
+      type="button"
+      className="cancel-button"
+      onClick={() => {
+        setSearchTerm('')
+        setFilterType('all')
+        setFilterCategory('all')
+        setStartDate('')
+        setEndDate('')
+      }}
+    >
+      Clear Filters
+    </button>
+  </div>
+
+  <p className="filter-results">
+    Showing {filteredTransactions.length} of {transactions.length} transactions
+  </p>
+
+  {filteredTransactions.length === 0 ? (
+    <p className="empty-state">
+      No matching transactions. Try changing your search or filters.
+    </p>
+  ) : (
+    <div className="transaction-list">
+      {filteredTransactions.map((item) => (
+        <article className="transaction-item" key={item.id}>
+          <div>
+            <strong>{item.category}</strong>
+            <p>
+              {item.description || item.type} · {item.date}
             </p>
-          ) : (
-            <div className="transaction-list">
-              {transactions.map((item) => (
-                <article className="transaction-item" key={item.id}>
-                  <div>
-                    <strong>{item.category}</strong>
-                    <p>
-                      {item.description || item.type} · {item.date}
-                    </p>
-                  </div>
+          </div>
 
-                  <div>
-                    <strong
-                      className={
-                        item.type === 'income' ? 'income' : 'expense'
-                      }
-                    >
-                      {item.type === 'income' ? '+' : '-'}$
-                      {item.amount.toFixed(2)}
-                    </strong>
+          <div>
+            <strong
+              className={item.type === 'income' ? 'income' : 'expense'}
+            >
+              {item.type === 'income' ? '+' : '-'}$
+              {item.amount.toFixed(2)}
+            </strong>
 
-                    <div className="transaction-actions">
-                      <button
-                        type="button"
-                        onClick={() => openEditForm(item)}
-                        disabled={deletingId !== null}
-                      >
-                        Edit
-                      </button>
+            <div className="transaction-actions">
+              <button
+                type="button"
+                onClick={() => openEditForm(item)}
+                disabled={deletingId !== null}
+              >
+                Edit
+              </button>
 
-                      <button
-                        type="button"
-                        className="cancel-button"
-                        onClick={() => void handleDelete(item)}
-                        disabled={deletingId !== null}
-                      >
-                        {deletingId === item.id ? 'Deleting...' : 'Delete'}
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              ))}
+              <button
+                type="button"
+                className="cancel-button"
+                onClick={() => void handleDelete(item)}
+                disabled={deletingId !== null}
+              >
+                {deletingId === item.id ? 'Deleting...' : 'Delete'}
+              </button>
             </div>
-          )}
-        </section>
+          </div>
+        </article>
+      ))}
+    </div>
+  )}
+</section>
+
       </main>
     </>
   )
