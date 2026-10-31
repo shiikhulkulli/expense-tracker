@@ -1,8 +1,27 @@
-
-import { useEffect, useState } from 'react'
-import axios from 'axios'
 import api from './api'
 import './App.css'
+
+import { lazy, Suspense, useEffect, useState } from 'react'
+const DashboardCharts = lazy(
+  () => import('./components/DashboardCharts')
+)
+import axios from 'axios'
+
+// import {
+//   Bar,
+//   BarChart,
+//   CartesianGrid,
+//   Cell,
+//   Legend,
+//   Pie,
+//   PieChart,
+//   ResponsiveContainer,
+//   Tooltip,
+//   XAxis,
+//   YAxis,
+// } from 'recharts'
+// import api from './api'
+// import './App.css'
 
 type Category = {
   id: number
@@ -68,10 +87,24 @@ function App() {
 
   const [categories, setCategories] = useState<Category[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+  const today = new Date()
+  return `${today.getFullYear()}-${String(
+    today.getMonth() + 1,
+  ).padStart(2, '0')}`
+})
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingTransactionId, setEditingTransactionId] =
     useState<number | null>(null)
   const [formError, setFormError] = useState('')
+  const [isCategoryFormOpen, setIsCategoryFormOpen] = useState(false)
+  const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null)
+  const [categoryName, setCategoryName] = useState('')
+  const [categoryType, setCategoryType] = useState<'income' | 'expense'>('expense')
+  const [categoryError, setCategoryError] = useState('')
+  const [isSavingCategory, setIsSavingCategory] = useState(false)
+  const [deletingCategoryId, setDeletingCategoryId] = useState<number | null>(null)
+
 
   const [type, setType] = useState<'income' | 'expense'>('expense')
   const [amount, setAmount] = useState('')
@@ -83,6 +116,10 @@ function App() {
   const [filterCategory, setFilterCategory] = useState('all')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage] = useState(10)
+
 
 
   const filteredCategories = categories.filter(
@@ -318,6 +355,133 @@ function App() {
     }
   }
 
+  
+function openCategoryForm(categoryToEdit?: Category) {
+  setEditingCategoryId(categoryToEdit?.id ?? null)
+  setCategoryName(categoryToEdit?.name ?? '')
+  setCategoryType(categoryToEdit?.type ?? 'expense')
+  setCategoryError('')
+  setIsCategoryFormOpen(true)
+}
+
+async function handleCategorySubmit(
+  event: React.FormEvent<HTMLFormElement>
+) {
+  event.preventDefault()
+  setCategoryError('')
+
+  const name = categoryName.trim()
+
+  if (!name) {
+    setCategoryError('Enter a category name.')
+    return
+  }
+
+  setIsSavingCategory(true)
+
+  try {
+    const payload = { name, type: categoryType }
+    let saved: Category
+
+    if (editingCategoryId !== null) {
+      const response = await api.put<Category>(
+        `categories/${editingCategoryId}/`,
+        payload
+      )
+      saved = response.data
+
+      setCategories((current) =>
+        current.map((item) => item.id === saved.id ? saved : item)
+      )
+
+      setTransactions((current) =>
+        current.map((item) =>
+          item.categoryId === saved.id
+            ? { ...item, category: saved.name }
+            : item
+        )
+      )
+
+      setApiStatus('Category updated successfully.')
+    } else {
+      const response = await api.post<Category>('categories/', payload)
+      saved = response.data
+
+      setCategories((current) =>
+        [...current, saved].sort((a, b) =>
+          a.name.localeCompare(b.name)
+        )
+      )
+
+      setApiStatus('Category created successfully.')
+    }
+
+    setIsCategoryFormOpen(false)
+    setEditingCategoryId(null)
+    setCategoryName('')
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const data = error.response?.data
+      const detail = data?.detail
+      const nameError = data?.name
+      const typeError = data?.type
+
+      setCategoryError(
+        typeof detail === 'string'
+          ? detail
+          : Array.isArray(nameError)
+            ? nameError.join(' ')
+            : typeof nameError === 'string'
+              ? nameError
+              : Array.isArray(typeError)
+                ? typeError.join(' ')
+                : typeof typeError === 'string'
+                  ? typeError
+                  : 'Could not save the category. Check your entries.'
+      )
+    } else {
+      setCategoryError('An unexpected error occurred.')
+    }
+  } finally {
+    setIsSavingCategory(false)
+  }
+}
+
+async function handleCategoryDelete(categoryToDelete: Category) {
+  const confirmed = window.confirm(
+    `Delete the ${categoryToDelete.name} category?`
+  )
+
+  if (!confirmed) return
+
+  setDeletingCategoryId(categoryToDelete.id)
+
+  try {
+    await api.delete(`categories/${categoryToDelete.id}/`)
+
+    setCategories((current) =>
+      current.filter((item) => item.id !== categoryToDelete.id)
+    )
+
+    setApiStatus('Category deleted successfully.')
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const detail = error.response?.data?.detail
+
+      setApiStatus(
+        typeof detail === 'string'
+          ? detail
+          : 'Could not delete the category.'
+      )
+    } else {
+      setApiStatus('Could not delete the category.')
+    }
+  } finally {
+    setDeletingCategoryId(null)
+  }
+}
+
+
   const totalIncome = transactions
     .filter((item) => item.type === 'income')
     .reduce((total, item) => total + item.amount, 0)
@@ -327,6 +491,63 @@ function App() {
     .reduce((total, item) => total + item.amount, 0)
 
   const balance = totalIncome - totalExpenses
+  
+  const monthlyTransactions = transactions.filter((item) =>
+    item.date.startsWith(selectedMonth),
+  )
+
+  const monthlyIncome = monthlyTransactions
+    .filter((item) => item.type === 'income')
+    .reduce((total, item) => total + item.amount, 0)
+
+  const monthlyExpenses = monthlyTransactions
+    .filter((item) => item.type === 'expense')
+    .reduce((total, item) => total + item.amount, 0)
+
+  const monthlyBalance = monthlyIncome - monthlyExpenses
+  
+const yearlyChartData = Array.from({ length: 12 }, (_, index) => {
+  const month = String(index + 1).padStart(2, '0')
+  const monthKey = `${selectedMonth.slice(0, 4)}-${month}`
+
+  const monthTransactions = transactions.filter((item) =>
+    item.date.startsWith(monthKey),
+  )
+
+  return {
+    month: new Date(
+      Number(selectedMonth.slice(0, 4)),
+      index,
+      1,
+    ).toLocaleString('en-US', { month: 'short' }),
+    income: monthTransactions
+      .filter((item) => item.type === 'income')
+      .reduce((total, item) => total + item.amount, 0),
+    expenses: monthTransactions
+      .filter((item) => item.type === 'expense')
+      .reduce((total, item) => total + item.amount, 0),
+  }
+})
+
+  const expenseChartData = monthlyTransactions
+  .filter((item) => item.type === 'expense')
+  .reduce<{ name: string; value: number }[]>((result, item) => {
+    const existing = result.find(
+      (category) => category.name === item.category,
+    )
+
+    if (existing) {
+      existing.value += item.amount
+    } else {
+      result.push({
+        name: item.category,
+        value: item.amount,
+      })
+    }
+
+    return result
+  }, [])
+
   
 const filteredTransactions = transactions.filter((item) => {
   const matchesSearch =
@@ -354,6 +575,20 @@ const filteredTransactions = transactions.filter((item) => {
     matchesEndDate
   )
 })
+
+const totalPages = Math.ceil(
+  filteredTransactions.length / itemsPerPage,
+)
+
+const startIndex = (currentPage - 1) * itemsPerPage
+
+const paginatedTransactions = filteredTransactions.slice(
+  startIndex,
+  startIndex + itemsPerPage,
+)
+useEffect(() => {
+  setCurrentPage(1)
+}, [searchTerm, filterType, filterCategory, startDate, endDate])
 
   if (isCheckingSession) {
     return (
@@ -445,6 +680,171 @@ const filteredTransactions = transactions.filter((item) => {
             <p className="amount expense">${totalExpenses.toFixed(2)}</p>
           </article>
         </section>
+        
+<section className="transactions-section">
+  <div className="section-heading">
+    <div>
+      <h2>Monthly Report</h2>
+      <p>Review your income and expenses for a selected month.</p>
+    </div>
+
+    <label>
+      Select month
+      <input
+        type="month"
+        value={selectedMonth}
+        onChange={(event) => setSelectedMonth(event.target.value)}
+      />
+    </label>
+  </div>
+
+  <div className="summary-grid">
+    <article className="summary-card">
+      <h2>Monthly Income</h2>
+      <p className="amount income">
+        ${monthlyIncome.toFixed(2)}
+      </p>
+    </article>
+
+    <article className="summary-card">
+      <h2>Monthly Expenses</h2>
+      <p className="amount expense">
+        ${monthlyExpenses.toFixed(2)}
+      </p>
+    </article>
+
+    <article className="summary-card">
+      <h2>Monthly Balance</h2>
+      <p className={`amount ${monthlyBalance < 0 ? 'expense' : 'income'}`}>
+        ${monthlyBalance.toFixed(2)}
+      </p>
+    </article>
+  </div>
+
+
+  <Suspense
+    fallback={
+      <p className="empty-state">Loading charts...</p>
+    }
+  >
+    <DashboardCharts
+      expenseChartData={expenseChartData}
+      yearlyChartData={yearlyChartData}
+    />
+  </Suspense>
+
+</section>
+
+
+        
+<section className="transactions-section">
+  <div className="section-heading">
+    <div>
+      <h2>Category Management</h2>
+      <p>Create and manage your income and expense categories.</p>
+    </div>
+
+    <button type="button" onClick={() => openCategoryForm()}>
+      + Add Category
+    </button>
+  </div>
+
+  {isCategoryFormOpen && (
+    <form
+      onSubmit={handleCategorySubmit}
+      className="transaction-form"
+    >
+      <h3>
+        {editingCategoryId !== null ? 'Edit Category' : 'New Category'}
+      </h3>
+
+      <label>
+        Category name
+        <input
+          type="text"
+          value={categoryName}
+          onChange={(event) => setCategoryName(event.target.value)}
+          placeholder="e.g. Groceries"
+          maxLength={100}
+          required
+        />
+      </label>
+
+      <label>
+        Category type
+        <select
+          value={categoryType}
+          onChange={(event) =>
+            setCategoryType(event.target.value as 'income' | 'expense')
+          }
+          required
+        >
+          <option value="expense">Expense</option>
+          <option value="income">Income</option>
+        </select>
+      </label>
+
+      {categoryError && <p role="alert">{categoryError}</p>}
+
+      <div className="form-actions">
+        <button type="submit" disabled={isSavingCategory}>
+          {isSavingCategory
+            ? 'Saving...'
+            : editingCategoryId !== null
+              ? 'Save Changes'
+              : 'Create Category'}
+        </button>
+
+        <button
+          type="button"
+          className="cancel-button"
+          onClick={() => {
+            setIsCategoryFormOpen(false)
+            setEditingCategoryId(null)
+            setCategoryError('')
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  )}
+
+  {categories.length === 0 ? (
+    <p className="empty-state">No categories yet. Create your first one.</p>
+  ) : (
+    <div className="transaction-list">
+      {categories.map((item) => (
+        <article className="transaction-item" key={item.id}>
+          <div>
+            <strong>{item.name}</strong>
+            <p>{item.type === 'income' ? 'Income' : 'Expense'}</p>
+          </div>
+
+          <div className="form-actions">
+            <button
+              type="button"
+              className="cancel-button"
+              onClick={() => openCategoryForm(item)}
+            >
+              Edit
+            </button>
+
+            <button
+              type="button"
+              className="cancel-button"
+              disabled={deletingCategoryId === item.id}
+              onClick={() => void handleCategoryDelete(item)}
+            >
+              {deletingCategoryId === item.id ? 'Deleting...' : 'Delete'}
+            </button>
+          </div>
+        </article>
+      ))}
+    </div>
+  )}
+</section>
+
 
         {isFormOpen && (
           <section className="transactions-section form-section">
@@ -644,7 +1044,7 @@ const filteredTransactions = transactions.filter((item) => {
     </p>
   ) : (
     <div className="transaction-list">
-      {filteredTransactions.map((item) => (
+      {paginatedTransactions.map((item) => (
         <article className="transaction-item" key={item.id}>
           <div>
             <strong>{item.category}</strong>
@@ -684,6 +1084,34 @@ const filteredTransactions = transactions.filter((item) => {
       ))}
     </div>
   )}
+
+  
+{filteredTransactions.length > 0 && (
+  <div className="pagination-controls">
+    <button
+      type="button"
+      className="cancel-button"
+      onClick={() => setCurrentPage((page) => page - 1)}
+      disabled={currentPage <= 1}
+    >
+      Previous
+    </button>
+
+    <span>
+      Page {Math.min(currentPage, totalPages)} of {totalPages}
+    </span>
+
+    <button
+      type="button"
+      className="cancel-button"
+      onClick={() => setCurrentPage((page) => page + 1)}
+      disabled={currentPage >= totalPages}
+    >
+      Next
+    </button>
+  </div>
+)}
+
 </section>
 
       </main>
