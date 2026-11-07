@@ -22,8 +22,10 @@ class CategorySerializer(serializers.ModelSerializer):
         if not request or not request.user.is_authenticated:
             return value
 
-        category_type = self.initial_data.get("type")
-
+        category_type = self.initial_data.get(
+            "type",
+            getattr(self.instance, "type", None),
+        )
         queryset = Category.objects.filter(
             user=request.user,
             name__iexact=value.strip(),
@@ -92,6 +94,3 @@ class TransactionSerializer(serializers.ModelSerializer):
             })
 
         return attrs
-
-
-# Admin@12345

@@ -1,4 +1,6 @@
-
+from rest_framework import generics, permissions, status
+from rest_framework.response import Response
+from django.db.models.deletion import ProtectedError
 import json
 
 from django.contrib.auth import authenticate, login, logout
@@ -69,6 +71,37 @@ class CategoryListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+
+from django.db.models.deletion import ProtectedError
+from rest_framework import status
+from rest_framework.response import Response
+
+
+class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = CategorySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Category.objects.filter(user=self.request.user)
+
+    def destroy(self, request, *args, **kwargs):
+        category = self.get_object()
+
+        try:
+            category.delete()
+        except ProtectedError:
+            return Response(
+                {
+                    "detail": (
+                        "This category has existing transactions. "
+                        "Remove or reassign those transactions first."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class TransactionListCreateView(generics.ListCreateAPIView):

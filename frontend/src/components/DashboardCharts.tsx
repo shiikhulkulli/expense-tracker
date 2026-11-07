@@ -12,17 +12,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import type { ExpenseChartItem, YearlyChartItem } from '../types'
 
-type ExpenseChartItem = {
-  name: string
-  value: number
-}
-
-type YearlyChartItem = {
-  month: string
-  income: number
-  expenses: number
-}
 
 type DashboardChartsProps = {
   expenseChartData: ExpenseChartItem[]

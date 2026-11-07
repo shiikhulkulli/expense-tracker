@@ -3,6 +3,7 @@ from django.urls import path
 
 from .views import (
     CategoryListCreateView,
+    CategoryDetailView,
     TransactionListCreateView,
     TransactionDetailView,
     csrf_token_view,
@@ -18,6 +19,11 @@ urlpatterns = [
         "categories/",
         CategoryListCreateView.as_view(),
         name="category-list-create",
+    ),
+    path(
+        "categories/<int:pk>/",
+        CategoryDetailView.as_view(),
+        name="category-detail",
     ),
     path(
         "transactions/",
